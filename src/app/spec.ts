@@ -9,8 +9,6 @@ import { CreateVolumeStreamingBehavior } from 'Molstar/mol-plugin/behavior/dynam
 import { PluginConfig } from 'Molstar/mol-plugin/config';
 import { PluginSpec } from 'Molstar/mol-plugin/spec';
 import { LigandQueryParam, MapParams, QueryParam } from './helpers';
-import { PDBeLociLabelProvider } from './labels';
-import { PDBeSIFTSMapping } from './sifts-mappings-behaviour';
 
 
 export const DefaultPluginSpec = (): PluginSpec => ({
@@ -20,14 +18,12 @@ export const DefaultPluginSpec = (): PluginSpec => ({
     behaviors: [
         PluginSpec.Behavior(PluginBehaviors.Representation.HighlightLoci),
         PluginSpec.Behavior(PluginBehaviors.Representation.SelectLoci),
-        PluginSpec.Behavior(PDBeLociLabelProvider),
         PluginSpec.Behavior(PluginBehaviors.Representation.FocusLoci),
         PluginSpec.Behavior(PluginBehaviors.Camera.FocusLoci),
         PluginSpec.Behavior(PluginBehaviors.Camera.CameraAxisHelper),
 
         PluginSpec.Behavior(PluginBehaviors.CustomProps.StructureInfo),
         PluginSpec.Behavior(PluginBehaviors.CustomProps.AccessibleSurfaceArea),
-        PluginSpec.Behavior(PDBeSIFTSMapping, { autoAttach: true, showTooltip: true }),
         PluginSpec.Behavior(PluginBehaviors.CustomProps.Interactions),
         PluginSpec.Behavior(PluginBehaviors.CustomProps.SecondaryStructure),
         PluginSpec.Behavior(PluginBehaviors.CustomProps.ValenceModel),

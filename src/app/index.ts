@@ -1,231 +1,559 @@
-import { Canvas3DProps } from 'Molstar/mol-canvas3d/canvas3d';
+/**
+ * Copyright (c) 2018-2023 mol* contributors, licensed under MIT, See LICENSE file for more info.
+ *
+ * @author David Sehnal <david.sehnal@gmail.com>
+ * @author Alexander Rose <alexander.rose@weirdbyte.de>
+ */
+import { ANVILMembraneOrientation } from 'Molstar/extensions/anvil/behavior';
+import { Backgrounds } from 'Molstar/extensions/backgrounds';
+import { CellPack } from 'Molstar/extensions/cellpack';
+import { DnatcoNtCs } from 'Molstar/extensions/dnatco';
+import { G3DFormat, G3dProvider } from 'Molstar/extensions/g3d/format';
+import { GeometryExport } from 'Molstar/extensions/geo-export';
+import { MAQualityAssessment, QualityAssessmentPLDDTPreset, QualityAssessmentQmeanPreset } from 'Molstar/extensions/model-archive/quality-assessment/behavior';
+import { QualityAssessment } from 'Molstar/extensions/model-archive/quality-assessment/prop';
+import { ModelExport } from 'Molstar/extensions/model-export';
+import { Mp4Export } from 'Molstar/extensions/mp4-export';
+import { MolViewSpec } from 'Molstar/extensions/mvs/behavior';
+import { loadMVS } from 'Molstar/extensions/mvs/load';
+import { MVSData } from 'Molstar/extensions/mvs/mvs-data';
+import { PDBeStructureQualityReport } from 'Molstar/extensions/pdbe';
+import { RCSBAssemblySymmetry, RCSBValidationReport } from 'Molstar/extensions/rcsb';
+import { RCSBAssemblySymmetryConfig } from 'Molstar/extensions/rcsb/assembly-symmetry/behavior';
+import { SbNcbrPartialCharges, SbNcbrPartialChargesPreset, SbNcbrPartialChargesPropertyProvider } from 'Molstar/extensions/sb-ncbr';
+import { Volseg, VolsegVolumeServerConfig } from 'Molstar/extensions/volumes-and-segmentations';
+import { wwPDBChemicalComponentDictionary } from 'Molstar/extensions/wwpdb/ccd/behavior';
+import { wwPDBStructConnExtensionFunctions } from 'Molstar/extensions/wwpdb/struct-conn';
+import { ZenodoImport } from 'Molstar/extensions/zenodo';
+import { SaccharideCompIdMapType } from 'Molstar/mol-model/structure/structure/carbohydrates/constants';
+import { Volume } from 'Molstar/mol-model/volume';
+import { DownloadStructure, PdbDownloadProvider } from 'Molstar/mol-plugin-state/actions/structure';
+import { DownloadDensity } from 'Molstar/mol-plugin-state/actions/volume';
+import { PresetTrajectoryHierarchy } from 'Molstar/mol-plugin-state/builder/structure/hierarchy-preset';
+import { PresetStructureRepresentations, StructureRepresentationPresetProvider } from 'Molstar/mol-plugin-state/builder/structure/representation-preset';
+import { BuiltInCoordinatesFormat } from 'Molstar/mol-plugin-state/formats/coordinates';
+import { DataFormatProvider } from 'Molstar/mol-plugin-state/formats/provider';
+import { BuiltInTopologyFormat } from 'Molstar/mol-plugin-state/formats/topology';
 import { BuiltInTrajectoryFormat } from 'Molstar/mol-plugin-state/formats/trajectory';
+import { BuildInVolumeFormat } from 'Molstar/mol-plugin-state/formats/volume';
+import { createVolumeRepresentationParams } from 'Molstar/mol-plugin-state/helpers/volume-representation-params';
+import { PluginStateObject } from 'Molstar/mol-plugin-state/objects';
+import { StateTransforms } from 'Molstar/mol-plugin-state/transforms';
+import { TrajectoryFromModelAndCoordinates } from 'Molstar/mol-plugin-state/transforms/model';
+import { PluginUIContext } from 'Molstar/mol-plugin-ui/context';
 import { createPluginUI } from 'Molstar/mol-plugin-ui/react18';
-import { PluginUISpec } from 'Molstar/mol-plugin-ui/spec';
-import { InitVolumeStreaming } from 'Molstar/mol-plugin/behavior/dynamic/volume-streaming/transformers';
+import { DefaultPluginUISpec, PluginUISpec } from 'Molstar/mol-plugin-ui/spec';
 import { PluginCommands } from 'Molstar/mol-plugin/commands';
 import { PluginConfig } from 'Molstar/mol-plugin/config';
-import { PluginContext } from 'Molstar/mol-plugin/context';
-import { PluginLayoutStateParams } from 'Molstar/mol-plugin/layout';
-import { ElementSymbolColorThemeParams } from 'Molstar/mol-theme/color/element-symbol';
+import { PluginLayoutControlsDisplay } from 'Molstar/mol-plugin/layout';
+import { PluginSpec } from 'Molstar/mol-plugin/spec';
+import { PluginState } from 'Molstar/mol-plugin/state';
+import { StateObjectRef, StateObjectSelector } from 'Molstar/mol-state';
 import { Asset } from 'Molstar/mol-util/assets';
-import { RxEventHelper } from 'Molstar/mol-util/rx-event-helper';
-import { LoadParams, ModelServerRequest, PDBeVolumes, addDefaults, getStructureUrl, runWithProgressMessage } from './helpers';
-import { DefaultParams, DefaultPluginUISpec, InitParams } from './spec';
-import { initParamsFromHtmlAttributes } from './spec-from-html';
+import { Color } from 'Molstar/mol-util/color';
+import 'Molstar/mol-util/polyfill';
+import { ObjectKeys } from 'Molstar/mol-util/type-helpers';
 
-import 'Molstar/mol-plugin-ui/skin/dark.scss';
-import './overlay.scss';
-import {ViewportControls} from 'Molstar/mol-plugin-ui/viewport';
+export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
+export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
 
-export class EMDBMolstarPlugin {
-    private _ev = RxEventHelper.create();
+const CustomFormats = [
+    ['g3d', G3dProvider] as const
+];
 
-    readonly events = {
-        loadComplete: this._ev<boolean>()
-    };
+export const ExtensionMap = {
+    'volseg': PluginSpec.Behavior(Volseg),
+    'backgrounds': PluginSpec.Behavior(Backgrounds),
+    'cellpack': PluginSpec.Behavior(CellPack),
+    'dnatco-ntcs': PluginSpec.Behavior(DnatcoNtCs),
+    'pdbe-structure-quality-report': PluginSpec.Behavior(PDBeStructureQualityReport),
+    'rcsb-assembly-symmetry': PluginSpec.Behavior(RCSBAssemblySymmetry),
+    'rcsb-validation-report': PluginSpec.Behavior(RCSBValidationReport),
+    'anvil-membrane-orientation': PluginSpec.Behavior(ANVILMembraneOrientation),
+    'g3d': PluginSpec.Behavior(G3DFormat),
+    'model-export': PluginSpec.Behavior(ModelExport),
+    'mp4-export': PluginSpec.Behavior(Mp4Export),
+    'geo-export': PluginSpec.Behavior(GeometryExport),
+    'ma-quality-assessment': PluginSpec.Behavior(MAQualityAssessment),
+    'zenodo-import': PluginSpec.Behavior(ZenodoImport),
+    'sb-ncbr-partial-charges': PluginSpec.Behavior(SbNcbrPartialCharges),
+    'wwpdb-chemical-component-dictionary': PluginSpec.Behavior(wwPDBChemicalComponentDictionary),
+    'mvs': PluginSpec.Behavior(MolViewSpec),
+};
 
-    plugin: PluginContext;
-    initParams: InitParams;
-    targetElement: HTMLElement;
-    assemblyRef = '';
-    selectedParams: any;
-    defaultRendererProps: Canvas3DProps['renderer'];
-    defaultMarkingProps: Canvas3DProps['marking'];
-    isHighlightColorUpdated = false;
-    isSelectedColorUpdated = false;
+const DefaultViewerOptions = {
+    customFormats: CustomFormats as [string, DataFormatProvider][],
+    extensions: ObjectKeys(ExtensionMap),
+    disabledExtensions: [] as string[],
+    layoutIsExpanded: true,
+    layoutShowControls: true,
+    layoutShowRemoteState: true,
+    layoutControlsDisplay: 'reactive' as PluginLayoutControlsDisplay,
+    layoutShowSequence: true,
+    layoutShowLog: true,
+    layoutShowLeftPanel: true,
+    collapseLeftPanel: false,
+    collapseRightPanel: false,
+    disableAntialiasing: PluginConfig.General.DisableAntialiasing.defaultValue,
+    pixelScale: PluginConfig.General.PixelScale.defaultValue,
+    pickScale: PluginConfig.General.PickScale.defaultValue,
+    pickPadding: PluginConfig.General.PickPadding.defaultValue,
+    enableWboit: PluginConfig.General.EnableWboit.defaultValue,
+    enableDpoit: PluginConfig.General.EnableDpoit.defaultValue,
+    preferWebgl1: PluginConfig.General.PreferWebGl1.defaultValue,
+    allowMajorPerformanceCaveat: PluginConfig.General.AllowMajorPerformanceCaveat.defaultValue,
+    powerPreference: PluginConfig.General.PowerPreference.defaultValue,
 
-    /** Extract InitParams from attributes of an HTML element */
-    static initParamsFromHtmlAttributes(element: HTMLElement): Partial<InitParams> {
-        return initParamsFromHtmlAttributes(element);
+    viewportShowExpand: PluginConfig.Viewport.ShowExpand.defaultValue,
+    viewportShowControls: PluginConfig.Viewport.ShowControls.defaultValue,
+    viewportShowSettings: PluginConfig.Viewport.ShowSettings.defaultValue,
+    viewportShowSelectionMode: PluginConfig.Viewport.ShowSelectionMode.defaultValue,
+    viewportShowAnimation: PluginConfig.Viewport.ShowAnimation.defaultValue,
+    viewportShowTrajectoryControls: PluginConfig.Viewport.ShowTrajectoryControls.defaultValue,
+    pluginStateServer: PluginConfig.State.DefaultServer.defaultValue,
+    volumeStreamingServer: PluginConfig.VolumeStreaming.DefaultServer.defaultValue,
+    volumeStreamingDisabled: !PluginConfig.VolumeStreaming.Enabled.defaultValue,
+    pdbProvider: PluginConfig.Download.DefaultPdbProvider.defaultValue,
+    emdbProvider: PluginConfig.Download.DefaultEmdbProvider.defaultValue,
+    saccharideCompIdMapType: 'default' as SaccharideCompIdMapType,
+    volumesAndSegmentationsDefaultServer: VolsegVolumeServerConfig.DefaultServer.defaultValue,
+    rcsbAssemblySymmetryDefaultServerType: RCSBAssemblySymmetryConfig.DefaultServerType.defaultValue,
+    rcsbAssemblySymmetryDefaultServerUrl: RCSBAssemblySymmetryConfig.DefaultServerUrl.defaultValue,
+    rcsbAssemblySymmetryApplyColors: RCSBAssemblySymmetryConfig.ApplyColors.defaultValue,
+};
+type ViewerOptions = typeof DefaultViewerOptions;
+
+export class Viewer {
+    constructor(public plugin: PluginUIContext) {
     }
 
-    async render(target: string | HTMLElement, options: Partial<InitParams>) {
-        console.debug('Rendering EMDBMolstarPlugin instance with options:', options);
-        // Validate options
-        if (!options) {
-            console.error('Missing `options` argument to `EMDBMolstarPlugin.render');
-            return;
+    static async create(elementOrId: string | HTMLElement, options: Partial<ViewerOptions> = {}) {
+        const definedOptions = {} as any;
+        // filter for defined properies only so the default values
+        // are property applied
+        for (const p of Object.keys(options) as (keyof ViewerOptions)[]) {
+            if (options[p] !== void 0) definedOptions[p] = options[p];
         }
 
-        this.initParams = addDefaults(options, DefaultParams);
+        const o: ViewerOptions = { ...DefaultViewerOptions, ...definedOptions };
+        const defaultSpec = DefaultPluginUISpec();
 
-        // Set EMDB Plugin Spec
-        const emdbPluginSpec: PluginUISpec = DefaultPluginUISpec();
-        emdbPluginSpec.config ??= [];
+        const disabledExtension = new Set(o.disabledExtensions ?? []);
 
-        emdbPluginSpec.layout = {
-            initial: {
-                isExpanded: this.initParams.expanded,
-                showControls: !this.initParams.hideControls,
-                regionState: {
-                    left: 'full',
-                    right: 'full',
-                    top: this.initParams.sequencePanel ? 'full' : 'hidden',
-                    bottom: 'full',
-                },
-                controlsDisplay: this.initParams.reactive ? 'reactive' : this.initParams.landscape ? 'landscape' : PluginLayoutStateParams.controlsDisplay.defaultValue,
-            }
-        };
-
-        emdbPluginSpec.components = {
-            controls: {
-                bottom: 'none'
-            },
-            viewport: {
-                controls: ViewportControls
-            },
-            remoteState: 'none',
-        };
-
-        emdbPluginSpec.config.push([PluginConfig.Structure.DefaultRepresentationPresetParams, {
-            theme: {
-                carbonColor: { name: 'element-symbol', params: {} },
-                focus: {
-                    name: 'element-symbol',
-                    params: { carbonColor: { name: 'element-symbol', params: {} } }
-                }
-            }
-        }]);
-
-        ElementSymbolColorThemeParams.carbonColor.defaultValue = { name: 'element-symbol', params: {} };
-
-        if (this.initParams.hideCanvasControls.includes('expand')) emdbPluginSpec.config.push([PluginConfig.Viewport.ShowExpand, false]);
-        if (this.initParams.hideCanvasControls.includes('selection')) emdbPluginSpec.config.push([PluginConfig.Viewport.ShowSelectionMode, false]);
-        if (this.initParams.hideCanvasControls.includes('animation')) emdbPluginSpec.config.push([PluginConfig.Viewport.ShowAnimation, false]);
-        if (this.initParams.hideCanvasControls.includes('controlToggle')) emdbPluginSpec.config.push([PluginConfig.Viewport.ShowControls, false]);
-        if (this.initParams.hideCanvasControls.includes('controlInfo')) emdbPluginSpec.config.push([PluginConfig.Viewport.ShowSettings, false]);
-
-        this.targetElement = typeof target === 'string' ? document.getElementById(target)! : target;
-        (this.targetElement as any).viewerInstance = this;
-
-        // Create/ Initialise Plugin
-        this.plugin = await createPluginUI(this.targetElement, emdbPluginSpec);
-
-        // Set selection granularity
-        if (this.initParams.granularity) {
-            this.plugin.managers.interactivity.setProps({ granularity: this.initParams.granularity });
-        }
-
-        // Save renderer defaults
-        this.defaultRendererProps = { ...this.plugin.canvas3d!.props.renderer };
-        this.defaultMarkingProps = { ...this.plugin.canvas3d!.props.marking };
-
-        // Collapse left panel and set left panel tab to none
-        PluginCommands.Layout.Update(this.plugin, { state: { regionState: { ...this.plugin.layout.state.regionState, left: 'collapsed' } } });
-        this.plugin.behaviors.layout.leftPanelTabName.next('none');
-
-        // TODO: Replace with our own loading fdunctions
-        // Load Molecule CIF or coordQuery and Parse
-        const dataSource = this.getMoleculeSrcUrl();
-        if (dataSource) {
-            this.load({ url: dataSource.url, format: dataSource.format as BuiltInTrajectoryFormat, assemblyId: this.initParams.assemblyId, isBinary: dataSource.isBinary, progressMessage: `Loading ${this.initParams.moleculeId ?? ''} ...` });
-        }
-    }
-
-    // TODO: Remove or at least change
-    getMoleculeSrcUrl() {
-        if (this.initParams.customData) {
-            let { url, format, binary } = this.initParams.customData;
-            if (!url || !format) {
-                throw new Error(`Provide all custom data parameters`);
-            }
-            if (format === 'cif' || format === 'bcif') format = 'mmcif';
-            // Validate supported format
-            const supportedFormats = ['mmcif', 'pdb', 'sdf'];
-            if (!supportedFormats.includes(format)) {
-                throw new Error(`${format} not supported.`);
-            }
-            return {
-                url: url,
-                format: format,
-                isBinary: binary,
-            };
-        }
-
-        // TODO: Remove LigandView
-        if (this.initParams.moleculeId) {
-            const request: Required<ModelServerRequest> = { pdbId: this.initParams.moleculeId, queryType: 'full', queryParams: {} };
-            if (this.initParams.ligandView) {
-                request.queryType = 'residueSurroundings';
-                request.queryParams['data_source'] = 'pdb-h';
-                if (!this.initParams.ligandView.label_comp_id_list) {
-                    request.queryParams['label_comp_id'] = this.initParams.ligandView.label_comp_id;
-                    request.queryParams['auth_seq_id'] = this.initParams.ligandView.auth_seq_id;
-                    request.queryParams['auth_asym_id'] = this.initParams.ligandView.auth_asym_id;
-                }
-            }
-            return {
-                url: getStructureUrl(this.initParams, request),
-                format: 'mmcif',
-                isBinary: this.initParams.encoding === 'bcif',
-            };
-        }
-
-        throw new Error(`Mandatory parameters missing! (customData or moleculeId must be defined)`);
-    }
-
-    // TODO: Remove or at least change
-    async load({ url, format = 'mmcif', isBinary = false, assemblyId = '', progressMessage }: LoadParams, fullLoad = true) {
-        await runWithProgressMessage(this.plugin, progressMessage, async () => {
-            let success = false;
-            try {
-                if (fullLoad) await this.clear();
-                const isHetView = this.initParams.ligandView ? true : false;
-                let downloadOptions: any = void 0;
-
-                const data = await this.plugin.builders.data.download({ url: Asset.Url(url, downloadOptions), isBinary }, { state: { isGhost: true } });
-                const trajectory = await this.plugin.builders.structure.parseTrajectory(data, format);
-
-                if (!isHetView) {
-
-                    await this.plugin.builders.structure.hierarchy.applyPreset(trajectory, this.initParams.defaultPreset as any, {
-                        structure: assemblyId ? (assemblyId === 'preferred') ? void 0 : { name: 'assembly', params: { id: assemblyId } } : { name: 'model', params: {} },
-                        showUnitcell: false,
-                        representationPreset: 'auto'
-                    });
-
-                } else {
-                    const model = await this.plugin.builders.structure.createModel(trajectory);
-                    await this.plugin.builders.structure.createStructure(model, { name: 'model', params: {} });
-                }
-
-                // Store assembly ref
-                const pivotIndex = this.plugin.managers.structure.hierarchy.selection.structures.length - 1;
-                const pivot = this.plugin.managers.structure.hierarchy.selection.structures[pivotIndex];
-                if (pivot && pivot.cell.parent) this.assemblyRef = pivot.cell.transform.ref;
-
-                // Load Volume
-                if (this.initParams.loadMaps) {
-                    if (this.assemblyRef === '') return;
-                    const asm = this.state.select(this.assemblyRef)[0].obj!;
-                    const defaultMapParams = InitVolumeStreaming.createDefaultParams(asm, this.plugin);
-                    const pdbeMapParams = PDBeVolumes.mapParams(defaultMapParams, this.initParams.mapSettings, '');
-                    if (pdbeMapParams) {
-                        await this.plugin.runTask(this.state.applyAction(InitVolumeStreaming, pdbeMapParams, this.assemblyRef));
-                        if (pdbeMapParams.method !== 'em' && !this.initParams.ligandView) PDBeVolumes.displayUsibilityMessage(this.plugin);
+        const spec: PluginUISpec = {
+            actions: defaultSpec.actions,
+            behaviors: [
+                ...defaultSpec.behaviors,
+                ...o.extensions.filter(e => !disabledExtension.has(e)).map(e => ExtensionMap[e]),
+            ],
+            animations: [...defaultSpec.animations || []],
+            customParamEditors: defaultSpec.customParamEditors,
+            customFormats: o?.customFormats,
+            layout: {
+                initial: {
+                    isExpanded: o.layoutIsExpanded,
+                    showControls: o.layoutShowControls,
+                    controlsDisplay: o.layoutControlsDisplay,
+                    regionState: {
+                        bottom: 'full',
+                        left: o.collapseLeftPanel ? 'collapsed' : 'full',
+                        right: o.collapseRightPanel ? 'hidden' : 'full',
+                        top: 'full',
                     }
-                }
+                },
+            },
+            components: {
+                ...defaultSpec.components,
+                controls: {
+                    ...defaultSpec.components?.controls,
+                    top: o.layoutShowSequence ? undefined : 'none',
+                    bottom: o.layoutShowLog ? undefined : 'none',
+                    left: o.layoutShowLeftPanel ? undefined : 'none',
+                },
+                remoteState: o.layoutShowRemoteState ? 'default' : 'none',
+            },
+            config: [
+                [PluginConfig.General.DisableAntialiasing, o.disableAntialiasing],
+                [PluginConfig.General.PixelScale, o.pixelScale],
+                [PluginConfig.General.PickScale, o.pickScale],
+                [PluginConfig.General.PickPadding, o.pickPadding],
+                [PluginConfig.General.EnableWboit, o.enableWboit],
+                [PluginConfig.General.EnableDpoit, o.enableDpoit],
+                [PluginConfig.General.PreferWebGl1, o.preferWebgl1],
+                [PluginConfig.General.AllowMajorPerformanceCaveat, o.allowMajorPerformanceCaveat],
+                [PluginConfig.General.PowerPreference, o.powerPreference],
+                [PluginConfig.Viewport.ShowExpand, o.viewportShowExpand],
+                [PluginConfig.Viewport.ShowControls, o.viewportShowControls],
+                [PluginConfig.Viewport.ShowSettings, o.viewportShowSettings],
+                [PluginConfig.Viewport.ShowSelectionMode, o.viewportShowSelectionMode],
+                [PluginConfig.Viewport.ShowAnimation, o.viewportShowAnimation],
+                [PluginConfig.Viewport.ShowTrajectoryControls, o.viewportShowTrajectoryControls],
+                [PluginConfig.State.DefaultServer, o.pluginStateServer],
+                [PluginConfig.State.CurrentServer, o.pluginStateServer],
+                [PluginConfig.VolumeStreaming.DefaultServer, o.volumeStreamingServer],
+                [PluginConfig.VolumeStreaming.Enabled, !o.volumeStreamingDisabled],
+                [PluginConfig.Download.DefaultPdbProvider, o.pdbProvider],
+                [PluginConfig.Download.DefaultEmdbProvider, o.emdbProvider],
+                [PluginConfig.Structure.DefaultRepresentationPreset, ViewerAutoPreset.id],
+                [PluginConfig.Structure.SaccharideCompIdMapType, o.saccharideCompIdMapType],
+                [VolsegVolumeServerConfig.DefaultServer, o.volumesAndSegmentationsDefaultServer],
+                [RCSBAssemblySymmetryConfig.DefaultServerType, o.rcsbAssemblySymmetryDefaultServerType],
+                [RCSBAssemblySymmetryConfig.DefaultServerUrl, o.rcsbAssemblySymmetryDefaultServerUrl],
+                [RCSBAssemblySymmetryConfig.ApplyColors, o.rcsbAssemblySymmetryApplyColors],
+            ]
+        };
 
-                success = true;
-            } finally {
-                this.events.loadComplete.next(success);
+        const element = typeof elementOrId === 'string'
+            ? document.getElementById(elementOrId)
+            : elementOrId;
+        if (!element) throw new Error(`Could not get element with id '${elementOrId}'`);
+        const plugin = await createPluginUI(element, spec, {
+            onBeforeUIRender: plugin => {
+                // the preset needs to be added before the UI renders otherwise
+                // "Download Structure" wont be able to pick it up
+                plugin.builders.structure.representation.registerPreset(ViewerAutoPreset);
             }
+        });
+        return new Viewer(plugin);
+    }
+
+    setRemoteSnapshot(id: string) {
+        const url = `${this.plugin.config.get(PluginConfig.State.CurrentServer)}/get/${id}`;
+        return PluginCommands.State.Snapshots.Fetch(this.plugin, { url });
+    }
+
+    loadSnapshotFromUrl(url: string, type: PluginState.SnapshotType) {
+        return PluginCommands.State.Snapshots.OpenUrl(this.plugin, { url, type });
+    }
+
+    loadStructureFromUrl(url: string, format: BuiltInTrajectoryFormat = 'mmcif', isBinary = false, options?: LoadStructureOptions & { label?: string }) {
+        const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
+            source: {
+                name: 'url',
+                params: {
+                    url: Asset.Url(url),
+                    format: format as any,
+                    isBinary,
+                    label: options?.label,
+                    options: { ...params.source.params.options, representationParams: options?.representationParams as any },
+                }
+            }
+        }));
+    }
+
+    async loadAllModelsOrAssemblyFromUrl(url: string, format: BuiltInTrajectoryFormat = 'mmcif', isBinary = false, options?: LoadStructureOptions) {
+        const plugin = this.plugin;
+
+        const data = await plugin.builders.data.download({ url, isBinary }, { state: { isGhost: true } });
+        const trajectory = await plugin.builders.structure.parseTrajectory(data, format);
+
+        await this.plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true, representationPresetParams: options?.representationParams });
+    }
+
+    async loadStructureFromData(data: string | number[], format: BuiltInTrajectoryFormat, options?: { dataLabel?: string }) {
+        const _data = await this.plugin.builders.data.rawData({ data, label: options?.dataLabel });
+        const trajectory = await this.plugin.builders.structure.parseTrajectory(_data, format);
+        await this.plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+    }
+
+    loadPdb(pdb: string, options?: LoadStructureOptions) {
+        const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
+        const provider = this.plugin.config.get(PluginConfig.Download.DefaultPdbProvider)!;
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
+            source: {
+                name: 'pdb' as const,
+                params: {
+                    provider: {
+                        id: pdb,
+                        server: {
+                            name: provider,
+                            params: PdbDownloadProvider[provider].defaultValue as any
+                        }
+                    },
+                    options: { ...params.source.params.options, representationParams: options?.representationParams as any },
+                }
+            }
+        }));
+    }
+
+    loadPdbDev(pdbDev: string) {
+        const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
+            source: {
+                name: 'pdb-dev' as const,
+                params: {
+                    provider: {
+                        id: pdbDev,
+                        encoding: 'bcif',
+                    },
+                    options: params.source.params.options,
+                }
+            }
+        }));
+    }
+
+    loadEmdb(emdb: string, options?: { detail?: number }) {
+        const provider = this.plugin.config.get(PluginConfig.Download.DefaultEmdbProvider)!;
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadDensity, {
+            source: {
+                name: 'pdb-emd-ds' as const,
+                params: {
+                    provider: {
+                        id: emdb,
+                        server: provider,
+                    },
+                    detail: options?.detail ?? 3,
+                }
+            }
+        }));
+    }
+
+    loadAlphaFoldDb(afdb: string) {
+        const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
+            source: {
+                name: 'alphafolddb' as const,
+                params: {
+                    id: afdb,
+                    options: {
+                        ...params.source.params.options,
+                        representation: 'preset-structure-representation-ma-quality-assessment-plddt'
+                    },
+                }
+            }
+        }));
+    }
+
+    loadModelArchive(id: string) {
+        const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
+        return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
+            source: {
+                name: 'modelarchive' as const,
+                params: {
+                    id,
+                    options: params.source.params.options,
+                }
+            }
+        }));
+    }
+
+    /**
+     * @example Load X-ray density from volume server
+        viewer.loadVolumeFromUrl({
+            url: 'https://www.ebi.ac.uk/pdbe/densities/x-ray/1tqn/cell?detail=3',
+            format: 'dscif',
+            isBinary: true
+        }, [{
+            type: 'relative',
+            value: 1.5,
+            color: 0x3362B2
+        }, {
+            type: 'relative',
+            value: 3,
+            color: 0x33BB33,
+            volumeIndex: 1
+        }, {
+            type: 'relative',
+            value: -3,
+            color: 0xBB3333,
+            volumeIndex: 1
+        }], {
+            entryId: ['2FO-FC', 'FO-FC'],
+            isLazy: true
+        });
+     * *********************
+     * @example Load EM density from volume server
+        viewer.loadVolumeFromUrl({
+            url: 'https://maps.rcsb.org/em/emd-30210/cell?detail=6',
+            format: 'dscif',
+            isBinary: true
+        }, [{
+            type: 'relative',
+            value: 1,
+            color: 0x3377aa
+        }], {
+            entryId: 'EMD-30210',
+            isLazy: true
+        });
+     */
+    async loadVolumeFromUrl({ url, format, isBinary }: { url: string, format: BuildInVolumeFormat, isBinary: boolean }, isovalues: VolumeIsovalueInfo[], options?: { entryId?: string | string[], isLazy?: boolean }) {
+        const plugin = this.plugin;
+
+        if (!plugin.dataFormats.get(format)) {
+            throw new Error(`Unknown density format: ${format}`);
+        }
+
+        if (options?.isLazy) {
+            const update = this.plugin.build();
+            update.toRoot().apply(StateTransforms.Data.LazyVolume, {
+                url,
+                format,
+                entryId: options?.entryId,
+                isBinary,
+                isovalues: isovalues.map(v => ({ alpha: 1, volumeIndex: 0, ...v }))
+            });
+            return update.commit();
+        }
+
+        return plugin.dataTransaction(async () => {
+            const data = await plugin.builders.data.download({ url, isBinary }, { state: { isGhost: true } });
+
+            const parsed = await plugin.dataFormats.get(format)!.parse(plugin, data, { entryId: options?.entryId });
+            const firstVolume = (parsed.volume || parsed.volumes[0]) as StateObjectSelector<PluginStateObject.Volume.Data>;
+            if (!firstVolume?.isOk) throw new Error('Failed to parse any volume.');
+
+            const repr = plugin.build();
+            for (const iso of isovalues) {
+                const volume: StateObjectSelector<PluginStateObject.Volume.Data> = parsed.volumes?.[iso.volumeIndex ?? 0] ?? parsed.volume;
+                const volumeData = volume.cell!.obj!.data;
+                repr
+                    .to(volume)
+                    .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
+                        type: 'isosurface',
+                        typeParams: { alpha: iso.alpha ?? 1, isoValue: Volume.adjustedIsoValue(volumeData, iso.value, iso.type) },
+                        color: 'uniform',
+                        colorParams: { value: iso.color }
+                    }));
+            }
+
+            await repr.commit();
         });
     }
 
-    get state() {
-        return this.plugin.state.data;
+    /**
+     * @example
+     *  viewer.loadTrajectory({
+     *      model: { kind: 'model-url', url: 'villin.gro', format: 'gro' },
+     *      coordinates: { kind: 'coordinates-url', url: 'villin.xtc', format: 'xtc', isBinary: true },
+     *      preset: 'all-models' // or 'default'
+     *  });
+     */
+    async loadTrajectory(params: LoadTrajectoryParams) {
+        const plugin = this.plugin;
+
+        let model: StateObjectSelector;
+
+        if (params.model.kind === 'model-data' || params.model.kind === 'model-url') {
+            const data = params.model.kind === 'model-data'
+                ? await plugin.builders.data.rawData({ data: params.model.data, label: params.modelLabel })
+                : await plugin.builders.data.download({ url: params.model.url, isBinary: params.model.isBinary, label: params.modelLabel });
+
+            const trajectory = await plugin.builders.structure.parseTrajectory(data, params.model.format ?? 'mmcif');
+            model = await plugin.builders.structure.createModel(trajectory);
+        } else {
+            const data = params.model.kind === 'topology-data'
+                ? await plugin.builders.data.rawData({ data: params.model.data, label: params.modelLabel })
+                : await plugin.builders.data.download({ url: params.model.url, isBinary: params.model.isBinary, label: params.modelLabel });
+
+            const provider = plugin.dataFormats.get(params.model.format);
+            model = await provider!.parse(plugin, data);
+        }
+
+        const data = params.coordinates.kind === 'coordinates-data'
+            ? await plugin.builders.data.rawData({ data: params.coordinates.data, label: params.coordinatesLabel })
+            : await plugin.builders.data.download({ url: params.coordinates.url, isBinary: params.coordinates.isBinary, label: params.coordinatesLabel });
+
+        const provider = plugin.dataFormats.get(params.coordinates.format);
+        const coords = await provider!.parse(plugin, data);
+
+        const trajectory = await plugin.build().toRoot()
+            .apply(TrajectoryFromModelAndCoordinates, {
+                modelRef: model.ref,
+                coordinatesRef: coords.ref
+            }, { dependsOn: [model.ref, coords.ref] })
+            .commit();
+
+        const preset = await plugin.builders.structure.hierarchy.applyPreset(trajectory, params.preset ?? 'default');
+
+        return { model, coords, preset };
     }
 
-    async clear() {
-        await this.plugin.clear();
-        this.assemblyRef = '';
-        this.selectedParams = void 0;
-        this.isHighlightColorUpdated = false;
-        this.isSelectedColorUpdated = false;
+    async loadMvsFromUrl(url: string, format: 'mvsj') {
+        if (format === 'mvsj') {
+            const data = await this.plugin.runTask(this.plugin.fetch({ url, type: 'string' }));
+            const mvsData = MVSData.fromMVSJ(data);
+            await loadMVS(this.plugin, mvsData, { sanityChecks: true, sourceUrl: url });
+        } else {
+            throw new Error(`Unknown MolViewSpec format: ${format}`);
+        }
+        // We might add more formats in the future
+    }
+
+    async loadMvsData(data: string, format: 'mvsj') {
+        if (format === 'mvsj') {
+            const mvsData = MVSData.fromMVSJ(data);
+            await loadMVS(this.plugin, mvsData, { sanityChecks: true, sourceUrl: undefined });
+        } else {
+            throw new Error(`Unknown MolViewSpec format: ${format}`);
+        }
+        // We might add more formats in the future
+    }
+
+    handleResize() {
+        this.plugin.layout.events.updated.next(void 0);
+    }
+
+    dispose() {
+        this.plugin.dispose();
     }
 }
 
+export interface LoadStructureOptions {
+    representationParams?: StructureRepresentationPresetProvider.CommonParams
+}
 
-(window as any).EMDBMolstarPlugin = EMDBMolstarPlugin;
+export interface VolumeIsovalueInfo {
+    type: 'absolute' | 'relative',
+    value: number,
+    color: Color,
+    alpha?: number,
+    volumeIndex?: number
+}
+
+export interface LoadTrajectoryParams {
+    model: { kind: 'model-url', url: string, format?: BuiltInTrajectoryFormat /* mmcif */, isBinary?: boolean }
+    | { kind: 'model-data', data: string | number[] | ArrayBuffer | Uint8Array, format?: BuiltInTrajectoryFormat /* mmcif */ }
+    | { kind: 'topology-url', url: string, format: BuiltInTopologyFormat, isBinary?: boolean }
+    | { kind: 'topology-data', data: string | number[] | ArrayBuffer | Uint8Array, format: BuiltInTopologyFormat },
+    modelLabel?: string,
+    coordinates: { kind: 'coordinates-url', url: string, format: BuiltInCoordinatesFormat, isBinary?: boolean }
+    | { kind: 'coordinates-data', data: string | number[] | ArrayBuffer | Uint8Array, format: BuiltInCoordinatesFormat },
+    coordinatesLabel?: string,
+    preset?: keyof PresetTrajectoryHierarchy
+}
+
+export const ViewerAutoPreset = StructureRepresentationPresetProvider({
+    id: 'preset-structure-representation-viewer-auto',
+    display: {
+        name: 'Automatic (w/ Annotation)', group: 'Annotation',
+        description: 'Show standard automatic representation but colored by quality assessment (if available in the model).'
+    },
+    isApplicable(a) {
+        return (
+            !!a.data.models.some(m => QualityAssessment.isApplicable(m, 'pLDDT')) ||
+            !!a.data.models.some(m => QualityAssessment.isApplicable(m, 'qmean'))
+        );
+    },
+    params: () => StructureRepresentationPresetProvider.CommonParams,
+    async apply(ref, params, plugin) {
+        const structureCell = StateObjectRef.resolveAndCheck(plugin.state.data, ref);
+        const structure = structureCell?.obj?.data;
+        if (!structureCell || !structure) return {};
+
+        if (!!structure.models.some(m => QualityAssessment.isApplicable(m, 'pLDDT'))) {
+            return await QualityAssessmentPLDDTPreset.apply(ref, params, plugin);
+        } else if (!!structure.models.some(m => QualityAssessment.isApplicable(m, 'qmean'))) {
+            return await QualityAssessmentQmeanPreset.apply(ref, params, plugin);
+        } else if (!!structure.models.some(m => SbNcbrPartialChargesPropertyProvider.isApplicable(m))) {
+            return await SbNcbrPartialChargesPreset.apply(ref, params, plugin);
+        } else {
+            return PresetStructureRepresentations.auto.apply(ref, params, plugin);
+        }
+    }
+});
+
+export const PluginExtensions = {
+    wwPDBStructConn: wwPDBStructConnExtensionFunctions,
+    mvs: { MVSData, loadMVS },
+};
