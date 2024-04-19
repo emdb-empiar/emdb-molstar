@@ -111,11 +111,11 @@
                 <button onclick="viewerInstance.clear()">Clear</button>
 
                 <h4>Colours</h4>
-                <button onclick="viewerInstance.showModelByComponentId(1)">Models</button>
-                <button onclick="viewerInstance.showModelByComponentId(2)">Chains</button>
-                <button onclick="viewerInstance.showModelByComponentId(3)">Q-Score</button>
-                <button onclick="viewerInstance.showModelByComponentId(4)">Atom Inclusion</button>
-                <button onclick="viewerInstance.showModelByComponentId(5)">Local Resolution</button>
+                <button onclick="viewerInstance.showModelByComponentId('models')">Models</button>
+                <button onclick="viewerInstance.showModelByComponentId('chains')">Chains</button>
+                <button onclick="viewerInstance.showModelByComponentId('qscore')">Q-Score</button>
+                <button onclick="viewerInstance.showModelByComponentId('atomInclusion')">Atom Inclusion</button>
+                <button onclick="viewerInstance.showModelByComponentId('localResolution')">Local Resolution</button>
             </div>
 
         </div>
@@ -169,8 +169,6 @@
                     }
                 }
             }
-
-            console.log(annotations);
             return annotations;
         }
 
@@ -241,14 +239,14 @@
                             'metric': 'Local Resolution',
                             'residues': localResolution
                         });
+                    }else {
+                        console.log("No local resolution data for", pdbId);
+                    }
 
                     modelAnnotations.push({
                         'pdbId': pdbId,
                         'modelAnnotations': annotations
                     })
-                    }else {
-                        console.log("No local resolution data for", pdbId);
-                    }
                 } catch (error) {
                     console.error("Error:", error);
                 }
@@ -281,12 +279,6 @@
             var allowMajorPerformanceCaveat = getParam('allow-major-performance-caveat', '[^&]+').trim() === '1';
             var powerPreference = getParam('power-preference', '[^&]+').trim().toLowerCase();
 
-            console.log('Params:', {
-                debugMode, timingMode, hideControls, collapseLeftPanel, pdbProvider, emdbProvider, mapProvider, pixelScale, pickScale, pickPadding, disableWboit, enableDpoit, preferWebgl1, allowMajorPerformanceCaveat, powerPreference
-            })
-
-            // console.log('Available extensions: ', Object.keys(molstar.ExtensionMap));
-
             Viewer.create('myViewer', {
                 disabledExtensions: [], // anything from Object.keys(molstar.ExtensionMap)
                 layoutShowControls: !hideControls,
@@ -311,16 +303,16 @@
                 const opacity = 0.6;
 
                 // Single model
-                const emdbId = 'EMD-8117';
-                const pdbIds = ['5irx'];
-                const contourLevel = 3.5;
-                const defaultState = 'Local Resolution';
+                // const emdbId = 'EMD-8117';
+                // const pdbIds = ['5irx'];
+                // const contourLevel = 3.5;
+                // const defaultState = 'Local Resolution';
 
                 // Multiple models
-                // const emdbId = 'EMD-10162';
-                // const pdbIds = ['6sfw', '6sfx'];
-                // const defaultState = 'Models';
-                // const contourLevel = 0.02;
+                const emdbId = 'EMD-10162';
+                const pdbIds = ['6sfw', '6sfx'];
+                const defaultState = 'Models';
+                const contourLevel = 0.02;
 
 
                 (async () => {

@@ -116,7 +116,14 @@ type ViewerOptions = typeof DefaultViewerOptions;
 
 export class Viewer {
     private mapColours: Colours;
-    private mvsStates = {} as { [key: string]: MVSData };
+    private mvsComponents: MVSComponents = {
+        'ligands': [],
+        'models': [],
+        'chains': [],
+        'qscore': [],
+        'atomInclusion': [],
+        'localResolution': [],
+    }
 
     constructor(public plugin: PluginUIContext) {
         this.mapColours = new Colours();
@@ -312,6 +319,7 @@ export class Viewer {
         const chainColors = new Colours();
         const modelColors = new Colours();
         const builder = MVSData.createBuilder();
+        let componentId = 0;
 
         for (const modelState of modelStates) {
             const modelAnnotations = modelState.modelAnnotations;
@@ -319,6 +327,8 @@ export class Viewer {
             const modelUrl = `https://www.ebi.ac.uk/pdbe/entry-files/download/${pdbId}_updated.cif`;
             const structure = builder.download({ url: modelUrl }).parse({ format: 'mmcif' }).modelStructure();
             structure.component({ selector: 'ligand' }).representation({ type: 'ball_and_stick' }).color({ color: '#aa55ff' });
+            this.mvsComponents.ligands.push(componentId);
+            componentId++;
 
             // @ts-ignore
             for (const modelAnnotation of modelAnnotations) {
@@ -335,21 +345,36 @@ export class Viewer {
                             color: chainColors.getNextColorHex(1)
                         });
                     }
+                    this.mvsComponents.chains.push(componentId);
+                    componentId++;
                 } else if (stateName === 'Models') {
                     const color = modelColors.getNextColorHex(1);
                     console.log(color);
                     cartoon.color({
                         color: color
                     });
+                    this.mvsComponents.models.push(componentId);
+                    componentId++;
                 } else {
                     // @ts-ignore
                     if (annotations.length === 0) {
                         console.log('No annotations found for', pdbId);
                     } else {
+                        if (stateName === 'Q-Score') {
+                            this.mvsComponents.qscore.push(componentId);
+                            componentId++;
+                        } else if (stateName === 'Atom Inclusion') {
+                            this.mvsComponents.atomInclusion.push(componentId);
+                            componentId++;
+                        } else if (stateName === 'Local Resolution') {
+                            this.mvsComponents.localResolution.push(componentId);
+                            componentId++;
+                        }
+
                         // @ts-ignore
                         for (const residue of annotations) {
                             cartoon.color({
-                                selector: [{auth_asym_id: residue.chain, auth_seq_id: residue.number}],
+                                selector: [{ auth_asym_id: residue.chain, auth_seq_id: residue.number }],
                                 color: residue.color
                             });
                             structure.component({
@@ -357,37 +382,46 @@ export class Viewer {
                                     auth_asym_id: residue.chain,
                                     auth_seq_id: residue.number
                                 }
-                            }).tooltip({text: `${stateName}: ${residue.score}`});
+                            }).tooltip({ text: `${stateName}: ${residue.score}` });
                         }
                     }
                 }
             }
-            const mvsState = builder.getState();
-            loadMVS(this.plugin, mvsState, { replaceExisting: true });
         }
+        const mvsState = builder.getState();
+        loadMVS(this.plugin, mvsState, { replaceExisting: true });
     }
 
-    showModelByComponentId(componentId: number) {
+    showModelByComponentId(colorMode: string) {
         const hierarchy = this.plugin.managers.structure.hierarchy;
         const structures = hierarchy.current.refs;
+        let componentIndexes: number[] = [];
+
+        if (colorMode === 'models') {
+            componentIndexes = this.mvsComponents.models;
+        } else if (colorMode === 'chains') {
+            componentIndexes = this.mvsComponents.chains;
+        } else if (colorMode === 'qscore') {
+            componentIndexes = this.mvsComponents.qscore;
+        } else if (colorMode === 'atomInclusion') {
+            componentIndexes = this.mvsComponents.atomInclusion;
+        } else if (colorMode === 'localResolution') {
+            componentIndexes = this.mvsComponents.localResolution;
+        }
+        console.log(componentIndexes);
+
         let i = 0;
         for (const structure of structures.values()) {
             if (structure.kind === 'structure-component') {
-                if (i !== 0) { // Zero is ligand components
-                    if (componentId === i) {
-                        hierarchy.toggleVisibility([structure], 'show');
-                    } else {
-                        hierarchy.toggleVisibility([structure], 'hide');
-                    }
+                if (componentIndexes.includes(i)) {
+                    console.log(structure);
+                    hierarchy.toggleVisibility([structure], 'show');
+                } else {
+                    hierarchy.toggleVisibility([structure], 'hide');
                 }
                 i++;
             }
         }
-    }
-
-    renderMvsState(stateName: string) {
-        const mvsState = this.mvsStates[stateName];
-        loadMVS(this.plugin, mvsState, { replaceExisting: true });
     }
 
     async clear() {
@@ -442,6 +476,15 @@ export interface LoadStructureOptions {
     representationParams?: StructureRepresentationPresetProvider.CommonParams
 }
 
+export interface MVSComponents {
+    'ligands': number[],
+    'models': number[],
+    'chains': number[],
+    'qscore': number[],
+    'atomInclusion': number[],
+    'localResolution': number[],
+}
+
 export interface ModelStates {
     pdbId: string,
     modelAnnotations: ModelAnnotations[]
@@ -460,35 +503,6 @@ export interface ResidueAnnotation {
     color: `#${string}`
     score: number
 }
-
-
-// export interface ModelStates {
-//     name: string,
-//     modelAnnotations: ModelAnnotations[]
-// }
-//
-// export interface ModelAnnotations {
-//     pdbId: string
-//     metric?: string
-//     residues?: ResidueAnnotation[]
-//     chains?: string[]
-// }
-//
-// export interface ResidueAnnotation {
-//     chain: string
-//     number: number
-//     aminoAcid: string
-//     color: `#${string}`
-//     score: number
-// }
-
-
-// export interface ResidueAnnotation {
-//     chain: string
-//     number: number
-//     color: `#${string}`
-//     score: number
-// }
 
 export const ViewerAutoPreset = StructureRepresentationPresetProvider({
     id: 'preset-structure-representation-viewer-auto',
