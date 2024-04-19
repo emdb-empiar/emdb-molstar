@@ -311,19 +311,21 @@ export class Viewer {
     createMvsStates(modelStates: ModelStates[]) {
         const chainColors = new Colours();
         const modelColors = new Colours();
+        const builder = MVSData.createBuilder();
+
         for (const modelState of modelStates) {
-            const builder = MVSData.createBuilder();
             const modelAnnotations = modelState.modelAnnotations;
-            const stateName = modelState.name;
+            const pdbId = modelState.pdbId;
+            const modelUrl = `https://www.ebi.ac.uk/pdbe/entry-files/download/${pdbId}_updated.cif`;
+            const structure = builder.download({ url: modelUrl }).parse({ format: 'mmcif' }).modelStructure();
+            structure.component({ selector: 'ligand' }).representation({ type: 'ball_and_stick' }).color({ color: '#aa55ff' });
 
             // @ts-ignore
             for (const modelAnnotation of modelAnnotations) {
-                const pdbId = modelAnnotation.pdbId;
                 const annotations = modelAnnotation.residues;
-                const modelUrl = `https://www.ebi.ac.uk/pdbe/entry-files/download/${pdbId}_updated.cif`;
-                const structure = builder.download({ url: modelUrl }).parse({ format: 'mmcif' }).modelStructure();
                 const cartoon = structure.component({ selector: 'polymer' }).representation({ type: 'cartoon' });
-                structure.component({ selector: 'ligand' }).representation({ type: 'ball_and_stick' }).color({ color: '#aa55ff' });
+                const stateName = modelAnnotation.metric;
+                console.log(stateName);
 
                 if (stateName === 'Chains') {
                     // @ts-ignore
@@ -361,53 +363,31 @@ export class Viewer {
                 }
             }
             const mvsState = builder.getState();
-            this.mvsStates[stateName] = mvsState;
+            loadMVS(this.plugin, mvsState, { replaceExisting: true });
+        }
+    }
+
+    showModelByComponentId(componentId: number) {
+        const hierarchy = this.plugin.managers.structure.hierarchy;
+        const structures = hierarchy.current.refs;
+        let i = 0;
+        for (const structure of structures.values()) {
+            if (structure.kind === 'structure-component') {
+                if (i !== 0) { // Zero is ligand components
+                    if (componentId === i) {
+                        hierarchy.toggleVisibility([structure], 'show');
+                    } else {
+                        hierarchy.toggleVisibility([structure], 'hide');
+                    }
+                }
+                i++;
+            }
         }
     }
 
     renderMvsState(stateName: string) {
         const mvsState = this.mvsStates[stateName];
         loadMVS(this.plugin, mvsState, { replaceExisting: true });
-    }
-
-    async loadEmdbMvs(modelAnnotations: ModelAnnotations[], stateName: string) {
-        const builder = MVSData.createBuilder();
-
-        for (const modelAnnotation of modelAnnotations) {
-            const pdbId = modelAnnotation.pdbId;
-            const annotations = modelAnnotation.residues;
-            const metric = modelAnnotation.metric;
-            const modelUrl = `https://www.ebi.ac.uk/pdbe/entry-files/download/${pdbId}_updated.cif`;
-            const structure = builder.download({ url: modelUrl }).parse({ format: 'mmcif' }).modelStructure();
-            const cartoon = structure.component({ selector: 'polymer' }).representation({ type: 'cartoon' });
-
-            // @ts-ignore
-            if (annotations.length === 0) {
-                console.log('No annotations found for', pdbId);
-            } else {
-                // @ts-ignore
-                for (const residue of annotations) {
-                    cartoon.color({
-                        selector: [{auth_asym_id: residue.chain, auth_seq_id: residue.number}],
-                        color: residue.color
-                    });
-                    structure.component({
-                        selector: {
-                            auth_asym_id: residue.chain,
-                            auth_seq_id: residue.number
-                        }
-                    }).tooltip({text: `${metric}: ${residue.score}`});
-                }
-            }
-
-            // Apply default patterns
-            // structure.component({ selector: 'polymer' }).representation({ type: 'cartoon' });
-            structure.component({ selector: 'ligand' }).representation({ type: 'ball_and_stick' }).color({ color: '#aa55ff' });
-        }
-
-        const mvsState = builder.getState();
-        this.mvsStates[stateName] = mvsState;
-        await loadMVS(this.plugin, mvsState, { replaceExisting: true });
     }
 
     async clear() {
@@ -463,13 +443,12 @@ export interface LoadStructureOptions {
 }
 
 export interface ModelStates {
-    name: string,
+    pdbId: string,
     modelAnnotations: ModelAnnotations[]
 }
 
 export interface ModelAnnotations {
-    pdbId: string
-    metric?: string
+    metric: string
     residues?: ResidueAnnotation[]
     chains?: string[]
 }
@@ -481,6 +460,27 @@ export interface ResidueAnnotation {
     color: `#${string}`
     score: number
 }
+
+
+// export interface ModelStates {
+//     name: string,
+//     modelAnnotations: ModelAnnotations[]
+// }
+//
+// export interface ModelAnnotations {
+//     pdbId: string
+//     metric?: string
+//     residues?: ResidueAnnotation[]
+//     chains?: string[]
+// }
+//
+// export interface ResidueAnnotation {
+//     chain: string
+//     number: number
+//     aminoAcid: string
+//     color: `#${string}`
+//     score: number
+// }
 
 
 // export interface ResidueAnnotation {
