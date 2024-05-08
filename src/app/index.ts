@@ -44,6 +44,7 @@ import { ObjectKeys } from 'Molstar/mol-util/type-helpers';
 import { Colours } from './colours';
 
 import 'Molstar/mol-plugin-ui/skin/light.scss';
+import {EMDBStructureQualityReport} from './validation/behavior';
 
 export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
 export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
@@ -58,6 +59,7 @@ export const ExtensionMap = {
     'cellpack': PluginSpec.Behavior(CellPack),
     'dnatco-ntcs': PluginSpec.Behavior(DnatcoNtCs),
     'pdbe-structure-quality-report': PluginSpec.Behavior(PDBeStructureQualityReport),
+    'emdb-structure-quality-report': PluginSpec.Behavior(EMDBStructureQualityReport),
     'rcsb-assembly-symmetry': PluginSpec.Behavior(RCSBAssemblySymmetry),
     'rcsb-validation-report': PluginSpec.Behavior(RCSBValidationReport),
     'anvil-membrane-orientation': PluginSpec.Behavior(ANVILMembraneOrientation),
@@ -315,7 +317,7 @@ export class Viewer {
         // We might add more formats in the future
     }
 
-    createMvsStates(modelStates: ModelStates[]) {
+    async createMvsStates(modelStates: ModelStates[]) {
         const chainColors = new Colours();
         const modelColors = new Colours();
         const builder = MVSData.createBuilder();
@@ -389,7 +391,7 @@ export class Viewer {
             }
         }
         const mvsState = builder.getState();
-        loadMVS(this.plugin, mvsState, { replaceExisting: true });
+        await loadMVS(this.plugin, mvsState, { replaceExisting: true });
     }
 
     showModelByComponentId(colorMode: string) {
@@ -408,7 +410,6 @@ export class Viewer {
         } else if (colorMode === 'localResolution') {
             componentIndexes = this.mvsComponents.localResolution;
         }
-        console.log(componentIndexes);
 
         let i = 0;
         for (const structure of structures.values()) {
@@ -428,16 +429,13 @@ export class Viewer {
         await this.plugin.clear();
     }
 
-    setColorMode(mode: string) {
-        console.log(this.plugin.managers.structure);
-    }
-
     toogleStructureVisibility(pdb_id: string, action: 'show' | 'hide') {
         pdb_id = pdb_id.toUpperCase();
         const hierarchy = this.plugin.managers.structure.hierarchy;
         const structures = hierarchy.current.refs;
 
         for (const structure of structures.values()) {
+            console.log(structure.cell.obj?.label, pdb_id);
             if (structure.cell.obj?.label === pdb_id) {
                 hierarchy.toggleVisibility([structure], action);
             }
@@ -463,12 +461,10 @@ export class Viewer {
         this.plugin.dispose();
     }
 
-    test() {
-        const hierarchy = this.plugin.managers.structure.hierarchy;
-        const structures = hierarchy.current.refs;
-
-        console.log(structures);
-
+    async applyColorTheme(theme: string) {
+        for (const s of this.plugin.managers.structure.hierarchy.current.structures) {
+            await this.plugin.managers.structure.component.updateRepresentationsTheme(s.components, { color: theme as any});
+        }
     }
 }
 
