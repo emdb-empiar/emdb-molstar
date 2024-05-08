@@ -192,6 +192,7 @@
                 for (const pdbId of pdbIds) {
                     viewer.loadPdb(pdbId);
                 }
+                viewer.loadEmdb(emdbId, contourLevel, opacity);
 
                 window.addEventListener('unload', () => {
                     // to aid GC

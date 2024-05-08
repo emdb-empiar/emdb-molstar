@@ -45,6 +45,7 @@ import { Colours } from './colours';
 
 import 'Molstar/mol-plugin-ui/skin/light.scss';
 import {EMDBStructureQualityReport} from './validation/behavior';
+import {CustomizedStructureTools} from "./CustomizedStructureTools";
 
 export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
 export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
@@ -176,6 +177,7 @@ export class Viewer {
                     left: o.layoutShowLeftPanel ? undefined : 'none',
                 },
                 remoteState: o.layoutShowRemoteState ? 'default' : 'none',
+                structureTools: CustomizedStructureTools
             },
             config: [
                 [PluginConfig.General.DisableAntialiasing, o.disableAntialiasing],
@@ -222,7 +224,7 @@ export class Viewer {
         return new Viewer(plugin);
     }
 
-    loadPdb(pdb: string, options?: LoadStructureOptions) {
+    async loadPdb(pdb: string, options?: LoadStructureOptions) {
         const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
         const provider = this.plugin.config.get(PluginConfig.Download.DefaultPdbProvider)!;
         return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
