@@ -6,7 +6,7 @@
 
 import { EMQualityReport, EMQualityReportProvider } from './prop';
 import { Location } from 'Molstar/mol-model/location';
-import { StructureElement } from 'Molstar/mol-model/structure';
+import {Bond, StructureElement} from 'Molstar/mol-model/structure';
 import { ColorTheme, LocationColor } from 'Molstar/mol-theme/color';
 import { ThemeDataContext } from 'Molstar/mol-theme/theme';
 import { Color } from 'Molstar/mol-util/color';
@@ -46,6 +46,16 @@ export function StructureQualityReportColorTheme(ctx: ThemeDataContext, props: P
                 if (emScore && emScore.color) {
                     const numericColor = Number(`0x${emScore.color.substr(1)}`);
                     return Color(numericColor);
+                }
+            } else if (Bond.isLocation(location)) {
+                const l = StructureElement.Location.create(ctx.structure);
+                l.unit = location.aUnit;
+                l.element = location.aUnit.elements[location.aIndex];
+                const emScore = getScores(l);
+                if (emScore && emScore.color) {
+                    const numericColor = Number(`0x${emScore.color.substr(1)}`);
+                    return Color(numericColor);
+
                 }
             }
             return Color.fromRgb(170, 170, 170);
