@@ -285,7 +285,7 @@ export class Viewer {
                     .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
                         type: 'slice',
                         typeParams: {
-                            alpha: alpha ?? 1,
+                            alpha: 1,
                             dimension: { name: 'z', params: middleZ }
                         },
                         color: 'uniform',
