@@ -286,11 +286,10 @@ export class Viewer {
                         type: 'slice',
                         typeParams: {
                             alpha: alpha ?? 1,
-                            isoValue: Volume.adjustedIsoValue(volumeData, contourLevel, kind),
-                            dimension: {name: 'z', params: middleZ}
+                            dimension: { name: 'z', params: middleZ }
                         },
                         color: 'uniform',
-                        colorParams: {value: Color.fromRgb(128, 128, 128)}
+                        colorParams: { value: Color.fromRgb(128, 128, 128) }
                     }));
             }
 
