@@ -46,6 +46,7 @@ import { Colours } from './colours';
 import 'Molstar/mol-plugin-ui/skin/light.scss';
 import {EMDBStructureQualityReport} from './validation/behavior';
 import {CustomizedStructureTools} from "./CustomizedStructureTools";
+import {Color} from "Molstar/mol-util/color";
 
 export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
 export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
@@ -244,7 +245,7 @@ export class Viewer {
         }));
     }
 
-    async loadEmdb(emdb: string, contourLevel: number, alpha: number, kind: 'relative' | 'absolute' = 'absolute') {
+    async loadEmdb(emdb: string, contourLevel: number, alpha: number, kind: 'relative' | 'absolute' = 'absolute', slice: boolean = false) {
         const plugin = this.plugin;
         const provider = this.plugin.config.get(PluginConfig.VolumeStreaming.DefaultServer)!;
         const numId = emdb.substring(4);
@@ -267,6 +268,8 @@ export class Viewer {
             const repr = plugin.build();
             const volume: StateObjectSelector<PluginStateObject.Volume.Data> = parsed.volumes?.[0] ?? parsed.volume;
             const volumeData = volume.cell!.obj!.data;
+            const dimensions = volumeData.grid.cells.space.dimensions;
+            const middleZ = Math.floor(dimensions[2] / 2);
             repr
                 .to(volume)
                 .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
@@ -276,6 +279,20 @@ export class Viewer {
                     colorParams: { value: this.mapColours.getNextColor() }
                 }));
 
+            if (slice) {
+                repr
+                    .to(volume)
+                    .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
+                        type: 'slice',
+                        typeParams: {
+                            alpha: alpha ?? 1,
+                            isoValue: Volume.adjustedIsoValue(volumeData, contourLevel, kind),
+                            dimension: {name: 'z', params: middleZ}
+                        },
+                        color: 'uniform',
+                        colorParams: {value: Color.fromRgb(128, 128, 128)}
+                    }));
+            }
 
             await repr.commit();
         });

@@ -185,14 +185,19 @@
                 // const contourLevel = 3.5;
 
                 // Multiple models
-                const emdbId = 'EMD-10162';
-                const pdbIds = ['6sfw', '6sfx'];
-                const contourLevel = 0.02;
+                // const emdbId = 'EMD-10162';
+                // const pdbIds = ['6sfw', '6sfx'];
+                // const contourLevel = 0.02;
+
+                // Tomogram
+                const emdbId = 'EMD-19762';
+                const pdbIds = [];
+                const contourLevel = 0;
 
                 for (const pdbId of pdbIds) {
                     viewer.loadPdb(pdbId);
                 }
-                viewer.loadEmdb(emdbId, contourLevel, opacity);
+                viewer.loadEmdb(emdbId, contourLevel, opacity, slice=true);
 
                 window.addEventListener('unload', () => {
                     // to aid GC
