@@ -45,8 +45,8 @@ import { Colours } from './colours';
 
 import 'Molstar/mol-plugin-ui/skin/light.scss';
 import {EMDBStructureQualityReport} from './validation/behavior';
-import {CustomizedStructureTools} from "./CustomizedStructureTools";
-import {Color} from "Molstar/mol-util/color";
+import {CustomizedStructureTools} from './CustomizedStructureTools';
+import {Color} from 'Molstar/mol-util/color';
 
 export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
 export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
@@ -128,6 +128,7 @@ export class Viewer {
         'atomInclusion': [],
         'localResolution': [],
     }
+    public sliceDimensions: number[];
 
     constructor(public plugin: PluginUIContext) {
         this.mapColours = new Colours();
@@ -250,7 +251,6 @@ export class Viewer {
         const provider = this.plugin.config.get(PluginConfig.VolumeStreaming.DefaultServer)!;
         const numId = emdb.substring(4);
         const url = `${provider}/em/${numId}/cell?detail=6`;
-        console.log(url);
         const format = 'dscif';
         const isBinary = true;
 
@@ -265,12 +265,12 @@ export class Viewer {
             const firstVolume = (parsed.volume || parsed.volumes[0]) as StateObjectSelector<PluginStateObject.Volume.Data>;
             if (!firstVolume?.isOk) throw new Error('Failed to parse any volume.');
 
-            const repr = plugin.build();
+            const update = plugin.build();
             const volume: StateObjectSelector<PluginStateObject.Volume.Data> = parsed.volumes?.[0] ?? parsed.volume;
             const volumeData = volume.cell!.obj!.data;
             const dimensions = volumeData.grid.cells.space.dimensions;
             const middleZ = Math.floor(dimensions[2] / 2);
-            repr
+            update
                 .to(volume)
                 .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
                     type: 'isosurface',
@@ -280,21 +280,38 @@ export class Viewer {
                 }));
 
             if (slice) {
-                repr
+                this.sliceDimensions = [dimensions[0], dimensions[1], dimensions[2]];
+                update
                     .to(volume)
                     .apply(StateTransforms.Representation.VolumeRepresentation3D, createVolumeRepresentationParams(this.plugin, firstVolume.data!, {
                         type: 'slice',
                         typeParams: {
                             alpha: 1,
+                            isoValue: { kind: 'relative', relativeValue: -500 },
                             dimension: { name: 'z', params: middleZ }
                         },
                         color: 'uniform',
                         colorParams: { value: Color.fromRgb(128, 128, 128) }
-                    }));
+                    }), {tags: ['slice']});
             }
 
-            await repr.commit();
+            await update.commit();
         });
+    }
+
+    async changeSliceDimension(dimension: 'x' | 'y' | 'z', value: number) {
+        const plugin = this.plugin;
+        const cell = plugin.state.data.selectQ(q =>q.ofTransformer(StateTransforms.Representation.VolumeRepresentation3D).withTag('slice'))[0];
+        await plugin.build().to(cell).update(createVolumeRepresentationParams(plugin, undefined, {
+            type: 'slice',
+            typeParams: {
+                alpha: 1,
+                isoValue: { kind: 'relative', relativeValue: -500 },
+                dimension: { name: dimension, params: value }
+            },
+            color: 'uniform',
+            colorParams: { value: Color.fromRgb(128, 128, 128) }
+        })).commit();
     }
 
     loadAlphaFoldDb(afdb: string) {
@@ -355,7 +372,6 @@ export class Viewer {
                 const annotations = modelAnnotation.residues;
                 const cartoon = structure.component({ selector: 'polymer' }).representation({ type: 'cartoon' });
                 const stateName = modelAnnotation.metric;
-                console.log(stateName);
 
                 if (stateName === 'Chains') {
                     // @ts-ignore
