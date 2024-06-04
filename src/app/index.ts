@@ -29,7 +29,10 @@ import { Volume } from 'Molstar/mol-model/volume';
 import { DownloadStructure, PdbDownloadProvider } from 'Molstar/mol-plugin-state/actions/structure';
 import { PresetStructureRepresentations, StructureRepresentationPresetProvider } from 'Molstar/mol-plugin-state/builder/structure/representation-preset';
 import { DataFormatProvider } from 'Molstar/mol-plugin-state/formats/provider';
-import { createVolumeRepresentationParams } from 'Molstar/mol-plugin-state/helpers/volume-representation-params';
+import {
+    createVolumeRepresentationParams,
+    VolumeRepresentationBuiltInProps
+} from 'Molstar/mol-plugin-state/helpers/volume-representation-params';
 import { PluginStateObject } from 'Molstar/mol-plugin-state/objects';
 import { StateTransforms } from 'Molstar/mol-plugin-state/transforms';
 import { PluginUIContext } from 'Molstar/mol-plugin-ui/context';
@@ -47,6 +50,7 @@ import 'Molstar/mol-plugin-ui/skin/light.scss';
 import {EMDBStructureQualityReport} from './validation/behavior';
 import {CustomizedStructureTools} from './CustomizedStructureTools';
 import {Color} from 'Molstar/mol-util/color';
+import Representation3D = PluginStateObject.Shape.Representation3D;
 
 export { PLUGIN_VERSION as version } from 'Molstar/mol-plugin/version';
 export { consoleStats, setDebugMode, setProductionMode, setTimingMode } from 'Molstar/mol-util/debug';
@@ -107,7 +111,7 @@ const DefaultViewerOptions = {
     viewportShowTrajectoryControls: PluginConfig.Viewport.ShowTrajectoryControls.defaultValue,
     pluginStateServer: PluginConfig.State.DefaultServer.defaultValue,
     volumeStreamingServer: PluginConfig.VolumeStreaming.DefaultServer.defaultValue,
-    volumeStreamingDisabled: !PluginConfig.VolumeStreaming.Enabled.defaultValue,
+    volumeStreamingDisabled: false,
     pdbProvider: PluginConfig.Download.DefaultPdbProvider.defaultValue,
     emdbProvider: PluginConfig.Download.DefaultEmdbProvider.defaultValue,
     saccharideCompIdMapType: 'default' as SaccharideCompIdMapType,
@@ -246,13 +250,20 @@ export class Viewer {
         }));
     }
 
-    async loadEmdb(emdb: string, contourLevel: number, alpha: number, kind: 'relative' | 'absolute' = 'absolute', slice: boolean = false) {
+    async loadEmdb(emdb: string, contourLevel: number, alpha: number, kind: 'relative' | 'absolute' = 'absolute', slice: boolean = false, mrc: boolean = false) {
         const plugin = this.plugin;
         const provider = this.plugin.config.get(PluginConfig.VolumeStreaming.DefaultServer)!;
         const numId = emdb.substring(4);
-        const url = `${provider}/em/${numId}/cell?detail=6`;
-        const format = 'dscif';
-        const isBinary = true;
+        let url = `${provider}/em/${numId}/cell?detail=6`;
+        // const url = `${provider}/em/${emdb}/cell?detail=6`;
+        let format = 'dscif';
+        let isBinary = true;
+
+        if (mrc) {
+            url = `https://ftp.ebi.ac.uk/pub/databases/emdb/structures/EMD-${numId}/map/emd_${numId}.map.gz`;
+            format = 'ccp4';
+            isBinary = true;
+        }
 
         if (!plugin.dataFormats.get(format)) {
             throw new Error(`Unknown density format: ${format}`);
@@ -260,6 +271,9 @@ export class Viewer {
 
         return plugin.dataTransaction(async () => {
             const data = await plugin.builders.data.download({ url, isBinary }, { state: { isGhost: true } });
+
+            // Decompress data
+            // FIXME: Read compressed maps if the format is mrc
 
             const parsed = await plugin.dataFormats.get(format)!.parse(plugin, data, { entryId: emdb });
             const firstVolume = (parsed.volume || parsed.volumes[0]) as StateObjectSelector<PluginStateObject.Volume.Data>;
@@ -314,6 +328,15 @@ export class Viewer {
         })).commit();
     }
 
+    async updateComponentParams(emdbId: string, props: VolumeRepresentationBuiltInProps) {
+        const plugin = this.plugin;
+        const volume = this.findVolumeById(emdbId);
+        if (volume) {
+            const cell = volume.cell;
+            await plugin.build().to(cell).update(createVolumeRepresentationParams(plugin, undefined, props)).commit();
+        }
+    }
+
     loadAlphaFoldDb(afdb: string) {
         const params = DownloadStructure.createDefaultParams(this.plugin.state.data.root.obj!, this.plugin);
         return this.plugin.runTask(this.plugin.state.data.applyAction(DownloadStructure, {
@@ -328,6 +351,47 @@ export class Viewer {
                 }
             }
         }));
+    }
+
+    findVolumeById(entryId: string) {
+        const volumesRef = this.plugin.managers.volume.hierarchy.current.refs;
+        for (const volume of volumesRef.values()) {
+            if (volume.cell.obj) {
+                if ('data' in volume.cell.obj) {
+                    if ('sourceData' in volume.cell.obj.data) {
+                        // @ts-ignore
+                        if (volume.cell.obj.data.sourceData.entryId === entryId) {
+                            return volume;
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    getComponentData(entryId: string) {
+        const volume = this.findVolumeById(entryId);
+        // Contour level, color, opacity
+        if (volume) {
+            const params = volume.cell.params?.values;
+            const typeParams = params.type.params;
+            const opacity = typeParams?.alpha;
+            let isoValue = typeParams?.isoValue as Volume.IsoValue;
+            let contourLevel = 0;
+            const volumeObj = volume.cell.obj as Representation3D;
+            // @ts-ignore
+            const stats = volumeObj.data.sourceData.grid.stats;
+
+            if (isoValue.kind === 'relative') {
+                contourLevel = Volume.IsoValue.toAbsolute(isoValue, stats).absoluteValue;
+            } else {
+                contourLevel = isoValue.absoluteValue;
+            }
+            const color = params.colorTheme.params.value;
+            contourLevel = Math.round(contourLevel * 1000) / 1000;
+            return { opacity, contourLevel, color, stats };
+        }
     }
 
     async loadMvsFromUrl(url: string, format: 'mvsj') {

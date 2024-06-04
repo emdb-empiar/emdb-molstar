@@ -184,6 +184,7 @@
                 //     ? 'https://maps.rcsb.org'
                 //     : 'https://www.ebi.ac.uk/pdbe/densities',
                 volumeStreamingServer: 'https://www.ebi.ac.uk/emdb/VolumeServer',
+                // volumeStreamingServer: 'http://127.0.0.1:1337/VolumeServer',
                 pixelScale: parseFloat(pixelScale) || 1,
                 pickScale: parseFloat(pickScale) || 0.25,
                 pickPadding: isNaN(parseFloat(pickPadding)) ? 1 : parseFloat(pickPadding),
@@ -200,33 +201,66 @@
                 // const emdbId = 'EMD-8117';
                 // const pdbIds = ['5irx'];
                 // const contourLevel = 3.5;
+                // const slice = false;
 
                 // Multiple models
                 // const emdbId = 'EMD-10162';
                 // const pdbIds = ['6sfw', '6sfx'];
                 // const contourLevel = 0.02;
+                // const slice = false;
+
+                // Half map
+                const emdbId = 'EMD-10162_half_map_1';
+                const pdbIds = ['6sfw', '6sfx'];
+                const contourLevel = 0.02;
+                const slice = false;
 
                 // Tomogram
-                const emdbId = 'EMD-19762';
-                const pdbIds = [];
-                const contourLevel = 2;
+                // const emdbId = 'EMD-19762';
+                // const pdbIds = [];
+                // const contourLevel = 2;
+                // const slice = true;
+
+                // Failed
+                // const emdbId = 'EMD-16652';
+                // const pdbIds = ['8cgv'];
+                // const contourLevel = 0.0309;
+                // const slice = false;
 
                 for (const pdbId of pdbIds) {
                     viewer.loadPdb(pdbId);
                 }
 
                 (async () => {
-                    await viewer.loadEmdb(emdbId, contourLevel, opacity, "relative", true);
+                    await viewer.loadEmdb(emdbId, contourLevel, opacity, "absolute", slice, false);
 
-                    const x = viewer.sliceDimensions[0];
-                    const y = viewer.sliceDimensions[1];
-                    const z = viewer.sliceDimensions[2];
+                    console.log("Getting component data...");
+                    const component = viewer.getComponentData(emdbId);
+                    console.log(component)
 
-                    if (viewer.sliceDimensions) {
-                        const sliceInput = document.getElementById('slice');
-                        const selectedDimension = document.getElementById('dimension').value;
-                        sliceInput.max = selectedDimension === 'z' ? z : selectedDimension === 'y' ? y : x;
-                        sliceInput.value = Math.floor(sliceInput.max / 2);
+                    // console.log("Updating component data...");
+                    // const props = {
+                    //     type: 'isosurface',
+                    //     typeParams: {
+                    //         alpha: 1,
+                    //         isoValue: { kind: 'relative', relativeValue: 5 }
+                    //     },
+                    //     color: 'uniform',
+                    //     colorParams: { value: component.color }
+                    // }
+                    // await viewer.updateComponentParams('EMD-8117', props);
+
+                    if (slice) {
+                        const x = viewer.sliceDimensions[0];
+                        const y = viewer.sliceDimensions[1];
+                        const z = viewer.sliceDimensions[2];
+
+                        if (viewer.sliceDimensions) {
+                            const sliceInput = document.getElementById('slice');
+                            const selectedDimension = document.getElementById('dimension').value;
+                            sliceInput.max = selectedDimension === 'z' ? z : selectedDimension === 'y' ? y : x;
+                            sliceInput.value = Math.floor(sliceInput.max / 2);
+                        }
                     }
                 })();
 
